@@ -2,7 +2,7 @@ name: 🤑 Post Stock Prices to Discord
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/1 * * * *'
   workflow_dispatch:
 
 jobs:
