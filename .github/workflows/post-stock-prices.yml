@@ -2,47 +2,44 @@ name: 🤑 Post Stock Prices to Discord
 
 on:
   schedule:
-    # GitHub Actions min cron interval is 5m:
     - cron: '*/5 * * * *'
-  workflow_dispatch:    # allows you to run it manually too
+  workflow_dispatch:
 
 jobs:
   post-stocks:
     runs-on: ubuntu-latest
 
-    steps:
-      - name: Check out repo
-        uses: actions/checkout@v3
+    # put your secrets under env: here
+    env:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      STOCK_SYMBOLS: AAPL,GOOGL,MSFT,TSLA
 
-      - name: Set up Python 3.x
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.x'
 
-      - name: Install dependencies
+      - name: Install deps
         run: pip install yfinance requests
 
-      - name: Fetch stock prices & post to Discord
-        env:
-          DISCORD_WEBHOOK_URL: ${{ DISCORD_WEBHOOK_URL }}
-          # Comma-separated list of symbols you want:
-          STOCK_SYMBOLS: AAPL,GOOGL,MSFT,TSLA
+      - name: Fetch & post to Discord
         run: |
           python - <<'EOF'
-          import os, requests
-          import yfinance as yf
+          import os, requests, yfinance as yf
 
           webhook = os.getenv("DISCORD_WEBHOOK_URL")
-          symbols = os.getenv("STOCK_SYMBOLS", "").split(",")
+          if not webhook:
+              raise SystemExit("❌ DISCORD_WEBHOOK_URL is not set")
+
+          symbols = os.getenv("STOCK_SYMBOLS").split(",")
           lines = []
           for s in symbols:
-              try:
-                  data = yf.Ticker(s).history(period="1m")
-                  price = data["Close"].iloc[-1]
-                  lines.append(f"**{s}**: ${price:.2f}")
-              except Exception:
-                  lines.append(f"**{s}**: error")
-          payload = {"content": "\n".join(lines)}
-          resp = requests.post(webhook, json=payload)
-          resp.raise_for_status()
+              df = yf.Ticker(s).history(period="1d", interval="1m")
+              lines.append(f"**{s}**: ${df['Close'].iloc[-1]:.2f}")
+
+          requests.post(webhook, json={"content": "\n".join(lines)}).raise_for_status()
           EOF
+
