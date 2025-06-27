@@ -1,35 +1,48 @@
-name: Post Stock Prices
+name: 🤑 Post Stock Prices to Discord
 
 on:
   schedule:
-    - cron: '*/5 * * * *'   # every 5 minutes
-  workflow_dispatch:       # manual trigger
+    # GitHub Actions min cron interval is 5m:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:    # allows you to run it manually too
 
 jobs:
-  post:
+  post-stocks:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
-      - name: Set up Python
+      - name: Check out repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.x
         uses: actions/setup-python@v4
         with:
-          python-version: 3.x
-      - name: Install deps
+          python-version: '3.x'
+
+      - name: Install dependencies
         run: pip install yfinance requests
-      - name: Fetch & post
+
+      - name: Fetch stock prices & post to Discord
         env:
-          WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          STOCKS: 'AAPL,GOOGL,MSFT'
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # Comma-separated list of symbols you want:
+          STOCK_SYMBOLS: AAPL,GOOGL,MSFT,TSLA
         run: |
           python - <<'EOF'
           import os, requests
           import yfinance as yf
 
-          url = os.getenv("https://discord.com/api/webhooks/1387991156251430954/sXZK7-IqY817d4_BKJNjXhRxvRib3414vjLjjwmQmro9NJQVHi_zDIxFM3CXlDmxc_Xs")
-          symbols = os.getenv("STOCKS").split(",")
-          content = "\n".join(
-            f"**{s}**: ${yf.Ticker(s).history(period='1m')['Close'][-1]:.2f}"
-            for s in symbols
-          )
-          requests.post(url, json={"content": content})
+          webhook = os.getenv("DISCORD_WEBHOOK_URL")
+          symbols = os.getenv("STOCK_SYMBOLS", "").split(",")
+          lines = []
+          for s in symbols:
+              try:
+                  data = yf.Ticker(s).history(period="1m")
+                  price = data["Close"].iloc[-1]
+                  lines.append(f"**{s}**: ${price:.2f}")
+              except Exception:
+                  lines.append(f"**{s}**: error")
+          payload = {"content": "\n".join(lines)}
+          resp = requests.post(webhook, json=payload)
+          resp.raise_for_status()
           EOF
